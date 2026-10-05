@@ -1,0 +1,11 @@
+{
+  "name": "apple-pi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "pi extension that adds Apple on-device models as a sidecar: think picker, side questions, tiered memory, and on-device tools",
+  "type": "module",
+  "scripts": {
+    "build": "swiftc -O helper/applepi.swift -o helper/applepi",
+    "test": "node --test test/apple-pi.test.ts"
+  }
+}
