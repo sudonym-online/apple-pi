@@ -38,6 +38,19 @@ export function chunks(text: string, maxTokens: number): string[] {
   return out;
 }
 
+// ---- PATHS ----
+
+const looseName = (s: string) => s.normalize("NFC").replace(/[\s   ]+/g, " ").toLowerCase();
+
+export function cleanPath(p: string): string {
+  return p.trim().replace(/^@/, "").replace(/^["']|["']$/g, "").replace(/^\$(?=\/|~)/, "").replace(/\\(.)/g, "$1");
+}
+
+export function matchName(wanted: string, names: string[]): string | undefined {
+  const w = looseName(wanted);
+  return names.find((n) => n === wanted) ?? names.find((n) => looseName(n) === w);
+}
+
 // ---- QUOTES ----
 
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();

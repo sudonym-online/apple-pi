@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chunks, daysBetween, estTokens, fit, grounded, locate, parseAnswer, parseEntries, stripLeadIn, weekOf } from "../src/lib.ts";
+import { chunks, cleanPath, daysBetween, estTokens, matchName, fit, grounded, locate, parseAnswer, parseEntries, stripLeadIn, weekOf } from "../src/lib.ts";
 
 test("estTokens counts digits and symbols as whole tokens", () => {
   assert.equal(estTokens("1234"), 4);
@@ -53,4 +53,15 @@ test("parseEntries splits dated sections", () => {
 test("date helpers", () => {
   assert.equal(weekOf("2026-10-08"), "2026-10-05");
   assert.equal(daysBetween("2026-09-28", "2026-10-05"), 7);
+});
+
+test("cleanPath strips quotes, @, $ and shell escapes", () => {
+  assert.equal(cleanPath('@"Desktop/a b.png"'), "Desktop/a b.png");
+  assert.equal(cleanPath("$/Users/x/Shot\\ 1\\ AM.png"), "/Users/x/Shot 1 AM.png");
+});
+
+test("matchName finds macOS screenshot names with a narrow no-break space", () => {
+  const names = ["notes.md", "Screenshot 2026-10-05 at 10.14.58 AM.png"];
+  assert.equal(matchName("Screenshot 2026-10-05 at 10.14.58 AM.png", names), names[1]);
+  assert.equal(matchName("missing.png", names), undefined);
 });

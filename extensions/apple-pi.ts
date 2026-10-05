@@ -7,7 +7,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  chunks, daysBetween, estTokens, fit, FM_MAX_TOKENS, grounded, locate, parseAnswer, parseEntries, renderEntries, stripLeadIn, weekOf,
+  chunks, cleanPath, daysBetween, estTokens, fit, FM_MAX_TOKENS, grounded, matchName, locate, parseAnswer, parseEntries, renderEntries, stripLeadIn, weekOf,
 } from "../src/lib.ts";
 
 // ---- PROCESS ----
@@ -70,6 +70,16 @@ function transcript(messages: any[], maxChars: number): string {
     if (m.role === "toolResult") lines.push(`TOOL RESULT (${m.toolName}${m.isError ? ", error" : ""}): ${messageText(m).slice(0, 400)}`);
   }
   return lines.join("\n").slice(-maxChars);
+}
+
+function findFile(cwd: string, raw: string): string {
+  const cleaned = cleanPath(raw).replace(/^~(?=\/|$)/, homedir());
+  const full = resolve(cwd, cleaned);
+  if (existsSync(full)) return full;
+  const dir = dirname(full);
+  const hit = existsSync(dir) ? matchName(full.slice(dir.length + 1), readdirSync(dir)) : undefined;
+  if (hit) return join(dir, hit);
+  throw new Error(`file not found: ${full}`);
 }
 
 const today = () => new Date().toLocaleDateString("en-CA");
@@ -233,7 +243,7 @@ export default function (pi: ExtensionAPI) {
     description: "Decode a QR code or barcode in an image file. Returns the exact payload. Use instead of looking at the image yourself.",
     parameters: Type.Object({ path: Type.String({ description: "Path to the image file" }) }),
     async execute(_id, p, _s, _u, ctx) {
-      const out = await fm(["--tool", "barcode", "--image", resolve(ctx.cwd, p.path), "--text",
+      const out = await fm(["--tool", "barcode", "--image", findFile(ctx.cwd, p.path), "--text",
         "Decode the barcode or QR code in this image and output only its payload."]);
       if (!out) throw new Error("fm could not decode the image");
       return text(stripLeadIn(out));
@@ -248,7 +258,7 @@ export default function (pi: ExtensionAPI) {
       question: Type.String({ description: "What you want to know about the image" }),
     }),
     async execute(_id, p, _s, _u, ctx) {
-      const out = await fm(["--image", resolve(ctx.cwd, p.path), "--text", `${p.question} Answer in under 100 words.`]);
+      const out = await fm(["--image", findFile(ctx.cwd, p.path), "--text", `${p.question} Answer in under 100 words.`]);
       if (!out) throw new Error("fm could not describe the image");
       return text(out);
     },
@@ -263,7 +273,7 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_id, p, _s, _u, ctx) {
       if (!helperReady()) throw new Error(BUILD_HINT);
-      const r = await runErr(HELPER, ["transcribe", resolve(ctx.cwd, p.path), p.locale ?? "en-US"], undefined, 300_000);
+      const r = await runErr(HELPER, ["transcribe", findFile(ctx.cwd, p.path), p.locale ?? "en-US"], undefined, 300_000);
       if (r.err) throw new Error(r.err);
       return text(r.out || "(no speech found)");
     },
@@ -294,7 +304,7 @@ export default function (pi: ExtensionAPI) {
       pattern: Type.Optional(Type.String({ description: "Optional regex to pre-filter lines" })),
     }),
     async execute(_id, p, _s, _u, ctx) {
-      const path = resolve(ctx.cwd, p.path);
+      const path = findFile(ctx.cwd, p.path);
       const file = readFileSync(path, "utf8");
       return text(await askFile(file, path, p.question, p.pattern));
     },
