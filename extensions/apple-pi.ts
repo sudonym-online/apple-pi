@@ -88,12 +88,12 @@ Keep file names, paths, commands, and numbers exactly as written. Do not add fac
 
 const oneLine = (s: string, max: number) => s.replace(/\*\*|^#+\s*|`/gm, "").replace(/\s+/g, " ").trim().slice(0, max);
 
-function capture(messages: any[], cwd: string): void {
+function capture(messages: any[], cwd: string): boolean {
   const lastUser = messages.findLastIndex((m) => m.role === "user");
-  if (lastUser < 0) return;
+  if (lastUser < 0) return false;
   const turn = messages.slice(lastUser);
   const prompt = messageText(turn[0]);
-  if (!prompt.trim() || prompt.startsWith("/")) return;
+  if (!prompt.trim()) return false;
   const calls = turn.flatMap((m) => (m.content ?? []).filter((c: any) => c.type === "toolCall"));
   const failed = turn.filter((m) => m.role === "toolResult" && m.isError).length;
   const answer = messageText(turn.findLast((m) => m.role === "assistant"));
@@ -103,6 +103,7 @@ function capture(messages: any[], cwd: string): void {
   const note = `asked: ${oneLine(prompt, 160)}${tools} | result: ${oneLine(answer, 200)}`;
   mkdirSync(MEM, { recursive: true });
   appendFileSync(memFile("now.md"), `## ${today()} ${clock()} | ${tilde(cwd)}\n${note}\n\n`);
+  return true;
 }
 
 async function rollup(): Promise<void> {
@@ -170,8 +171,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("agent_end", async (e, ctx) => {
     lastMessages = e.messages as any[];
     try {
-      capture(lastMessages, ctx.cwd);
-      captures++;
+      if (capture(lastMessages, ctx.cwd)) captures++;
       status(ctx);
     } catch {}
   });
