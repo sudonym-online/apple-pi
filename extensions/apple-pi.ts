@@ -1,9 +1,9 @@
 import { Type } from "@earendil-works/pi-ai";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getMarkdownTheme, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
-  Box, Input, matchesKey, sliceByColumn, stripTerminalSequences, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi, type OverlayHandle,
+  Box, Input, Markdown, matchesKey, sliceByColumn, stripTerminalSequences, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi, type OverlayHandle,
 } from "@earendil-works/pi-tui";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -39,6 +39,21 @@ let queue: Promise<unknown> = Promise.resolve();
 function fm(args: string[], timeout = 60_000): Promise<string | null> {
   const call = queue.then(() =>
     run("fm", ["respond", "--no-stream", "-g", "--guardrails", "permissive-content-transformations", ...args], undefined, timeout));
+  queue = call.catch(() => null);
+  return call;
+}
+
+function fmStream(args: string[], onText: (text: string) => void, timeout = 60_000): Promise<string | null> {
+  const call = queue.then(() => new Promise<string | null>((done) => {
+    const child = spawn("fm", ["respond", "-g", "--guardrails", "permissive-content-transformations", ...args], { stdio: ["ignore", "pipe", "pipe"], timeout });
+    let out = "";
+    child.stdout.on("data", (d) => {
+      out += d;
+      onText(out);
+    });
+    child.on("error", () => done(null));
+    child.on("close", (code) => done(code === 0 ? out.trim() : null));
+  }));
   queue = call.catch(() => null);
   return call;
 }
@@ -159,7 +174,8 @@ function memoryBlock(): string {
 
 // ---- PANEL ----
 
-type Turn = { q: string; a: string };
+type Turn = { q: string; a: string; deep: boolean; pending: boolean; md?: Markdown; mdText?: string };
+const SPINNER = "\u280b\u2819\u2839\u2838\u283c\u2834\u2826\u2827\u2807\u280f";
 type Point = [row: number, col: number];
 
 class FmPanel {
@@ -174,7 +190,7 @@ class FmPanel {
     private theme: any,
     private turns: Turn[],
     private onClose: () => void,
-    private answer: (q: string) => Promise<string>,
+    private answer: (q: string, onText: (text: string) => void) => Promise<string>,
   ) {
     this.input.onSubmit = (v) => void this.submit(v);
   }
@@ -183,11 +199,16 @@ class FmPanel {
     const q = v.trim();
     if (!q) return;
     this.input.setValue("");
-    const turn = { q, a: "\u2026" };
+    const turn: Turn = { q, a: "", deep: q.startsWith("+"), pending: true };
     this.sel = undefined;
     this.turns.push(turn);
-    this.tui.requestRender();
-    turn.a = await this.answer(q);
+    const tick = setInterval(() => this.tui.requestRender(), 100);
+    turn.a = await this.answer(q, (text) => {
+      turn.a = text;
+      this.tui.requestRender();
+    });
+    turn.pending = false;
+    clearInterval(tick);
     this.tui.requestRender();
   }
 
@@ -217,6 +238,12 @@ class FmPanel {
       } else this.sel = undefined;
     }
     return { handled: true, render: true };
+  }
+
+  markdown(t: Turn, width: number): string[] {
+    t.md ??= new Markdown("", 0, 0, getMarkdownTheme());
+    if (t.mdText !== t.a) t.md.setText((t.mdText = t.a));
+    return t.md.render(width);
   }
 
   range(): [Point, Point] | undefined {
@@ -249,7 +276,7 @@ class FmPanel {
     const row = (s: string) => b("\u2502") + truncateToWidth(s, w, "\u2026", true) + b("\u2502");
     const body = this.turns.flatMap((t) => [
       ...wrapTextWithAnsi(th.fg("accent", "\u203a ") + th.fg("dim", t.q), w - 1),
-      ...wrapTextWithAnsi(t.a, w - 1),
+      ...(t.pending && !t.a ? [th.fg("dim", `${SPINNER[Math.floor(Date.now() / 100) % SPINNER.length]} thinking`)] : this.markdown(t, w - 1)),
       "",
     ]).map((l) => ` ${l}`);
     const height = Math.max(3, this.tui.terminal.rows - PANEL_FREE_ROWS - 4);
@@ -266,7 +293,8 @@ class FmPanel {
       const end = i === r[1][0] ? r[1][1] + 1 : w;
       return sliceByColumn(p, 0, start) + "\x1b[7m" + sliceByColumn(p, start, end - start) + "\x1b[27m" + sliceByColumn(p, end, w);
     });
-    const title = ` \uF8FF fm${this.copied ? " \u00b7 copied" : ""} `;
+    const plus = this.input.getValue().startsWith("+") || (this.turns.at(-1)?.deep ?? false);
+    const title = ` \uF8FF fm${plus ? "+" : ""}${this.copied ? " \u00b7 copied" : ""} `;
     return [
       b("\u256d\u2500") + th.fg("accent", title) + b("\u2500".repeat(Math.max(0, w - 1 - visibleWidth(title))) + "\u256e"),
       ...body2.map(row),
@@ -361,7 +389,7 @@ export default function (pi: ExtensionAPI) {
     return [...summaries, transcript(entries.filter((e) => e.type === "message").map((e) => e.message), 200_000)].filter(Boolean).join("\n\n");
   };
 
-  const panelAnswer = async (q: string) => {
+  const panelAnswer = async (q: string, onText?: (text: string) => void) => {
     const deep = q.startsWith("+");
     const question = deep ? q.slice(1).trim() : q;
     const session = sessionText();
@@ -371,7 +399,8 @@ export default function (pi: ExtensionAPI) {
       earlier ? `EARLIER SIDE CHAT (USER and you):\n${fit(earlier, 1_000)}` : "",
     ].filter(Boolean).join("\n\n");
     const instr = "You are a side chat. The person talking to you is the USER in the main session below. ASSISTANT is their main AI assistant, not you. Use the main session only to answer questions about it. Reply with only your answer, briefly and precisely. Never repeat or quote the session format.";
-    const a = content ? await ask(instr, content, question) : await fm(["-i", instr, question]);
+    const args = content ? ["-i", instr, "--text", fit(content), question] : ["-i", instr, question];
+    const a = onText ? await fmStream(args, onText) : await fm(args);
     return a ?? "fm did not answer (unavailable, timed out, or refused).";
   };
 
