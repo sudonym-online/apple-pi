@@ -325,10 +325,25 @@ export default function (pi: ExtensionAPI) {
     if (!panel) {
       void ctx.ui.custom<void>(
         (tui, theme) => {
-          tui.addInputListener(() => {
-            if (panel && !panel.isFocused()) panel.unfocus();
+          const listener = (data: string) => {
+            if (!panel) return undefined;
+            const click = data.match(/^\x1b\[<0;(\d+);(\d+)M$/);
+            const r = panel.getBounds();
+            if (!panel.isFocused()) panel.unfocus();
+            else if (click && r) {
+              const x = Number(click[1]) - 1;
+              const y = Number(click[2]) - 1;
+              if (x < r.col || x >= r.col + r.width || y < r.row || y >= r.row + r.height) panel.unfocus();
+            }
             return undefined;
-          });
+          };
+          const listeners: Set<unknown> | undefined = (tui as any).inputListeners;
+          if (listeners) {
+            const rest = [...listeners];
+            listeners.clear();
+            listeners.add(listener);
+            for (const l of rest) listeners.add(l);
+          } else tui.addInputListener(listener);
           return new FmPanel(tui, theme, turns, () => {
             panel?.unfocus();
             panel?.setHidden(true);
