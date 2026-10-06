@@ -184,6 +184,7 @@ class FmPanel {
   lines: string[] = [];
   sel?: { a: Point; b: Point };
   copied = false;
+  deep = false;
 
   constructor(
     private tui: any,
@@ -196,8 +197,9 @@ class FmPanel {
   }
 
   async submit(v: string) {
-    const q = v.trim();
-    if (!q) return;
+    const typed = v.trim();
+    if (!typed) return;
+    const q = this.deep && !typed.startsWith("+") ? `+${typed}` : typed;
     this.input.setValue("");
     const turn: Turn = { q, a: "", deep: q.startsWith("+"), pending: true };
     this.sel = undefined;
@@ -293,7 +295,7 @@ class FmPanel {
       const end = i === r[1][0] ? r[1][1] + 1 : w;
       return sliceByColumn(p, 0, start) + "\x1b[7m" + sliceByColumn(p, start, end - start) + "\x1b[27m" + sliceByColumn(p, end, w);
     });
-    const plus = this.input.getValue().startsWith("+") || (this.turns.at(-1)?.deep ?? false);
+    const plus = this.deep || this.input.getValue().startsWith("+");
     const title = ` \uF8FF fm${plus ? "+" : ""}${this.copied ? " \u00b7 copied" : ""} `;
     return [
       b("\u256d\u2500") + th.fg("accent", title) + b("\u2500".repeat(Math.max(0, w - 1 - visibleWidth(title))) + "\u256e"),
@@ -466,7 +468,8 @@ export default function (pi: ExtensionAPI) {
       return;
     }
     openPanel(ctx, !args.trim());
-    if (args.trim()) void view?.submit(q);
+    if (view) view.deep = withContext;
+    if (args.trim()) void view?.submit(args);
   };
 
   pi.registerShortcut(PANEL_KEY, { description: "Toggle the fm side chat panel", handler: (ctx) => togglePanel(ctx) });
