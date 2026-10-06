@@ -38,5 +38,8 @@
   "scripts": {
     "build": "swiftc -O helper/applepi.swift -o helper/applepi",
     "test": "node --test test/apple-pi.test.ts"
+  },
+  "pi": {
+    "image": "https://raw.githubusercontent.com/sudonym-online/apple-pi/main/docs/preview.png"
   }
 }
