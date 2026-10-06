@@ -1,9 +1,40 @@
 {
-  "name": "apple-pi",
+  "name": "@sudonym-online/apple-pi",
   "version": "0.1.0",
-  "private": true,
   "description": "pi extension that adds Apple on-device models as a sidecar: think picker, side questions, tiered memory, and on-device tools",
+  "keywords": [
+    "pi-package",
+    "apple-intelligence",
+    "foundation-models",
+    "on-device"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sudonym-online/apple-pi.git"
+  },
+  "homepage": "https://github.com/sudonym-online/apple-pi#readme",
   "type": "module",
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "extensions",
+    "src",
+    "helper/applepi",
+    "helper/applepi.swift",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
   "scripts": {
     "build": "swiftc -O helper/applepi.swift -o helper/applepi",
     "test": "node --test test/apple-pi.test.ts"
