@@ -40,6 +40,9 @@
     "test": "node --test test/apple-pi.test.ts"
   },
   "pi": {
+    "extensions": [
+      "./extensions"
+    ],
     "image": "https://raw.githubusercontent.com/sudonym-online/apple-pi/main/docs/preview.png"
   }
 }
