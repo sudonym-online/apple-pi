@@ -1,6 +1,6 @@
 {
   "name": "@sudonym-online/apple-pi",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Apple Intelligence helper for any pi model: fm side-chat panel, auto thinking on/off, tiered memory, and on-device QR, speech, and translation tools",
   "keywords": [
     "pi-package",
