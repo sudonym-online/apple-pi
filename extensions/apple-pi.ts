@@ -347,19 +347,9 @@ export default function (pi: ExtensionAPI) {
     return box;
   });
 
-  const side = (withContext: boolean) => async (args: string, ctx: ExtensionContext) => {
-    const q = args.trim();
-    if (!q) return ctx.ui.notify(`usage: /${withContext ? "fm+" : "fm"} <question>`, "warning");
-    const a = withContext
-      ? await ask("Answer the question about this agent session briefly. Use only the transcript.", transcript(lastMessages, 12_000), q)
-      : await fm(["-i", "Answer briefly and precisely. Say if you are unsure.", q]);
-    const answer = a ?? "fm did not answer (unavailable, timed out, or refused).";
-    pi.appendEntry("apple-pi-side", { q, a: answer });
-    if (!ctx.hasUI) process.stdout.write(`[fm] ${answer}\n`);
-  };
-
   const turns: Turn[] = [];
   let panel: OverlayHandle | undefined;
+  let view: FmPanel | undefined;
 
   const panelAnswer = async (q: string) => {
     const withContext = q.startsWith("+");
@@ -374,57 +364,74 @@ export default function (pi: ExtensionAPI) {
     return a ?? "fm did not answer (unavailable, timed out, or refused).";
   };
 
-  const togglePanel = (ctx: ExtensionContext) => {
-    if (!ctx.hasUI) return;
-    if (!panel) {
-      void ctx.ui.custom<void>(
-        (tui, theme) => {
-          const listener = (data: string) => {
-            if (!panel) return undefined;
-            const click = data.match(/^\x1b\[<0;(\d+);(\d+)M$/);
-            const r = panel.getBounds();
-            if (!panel.isFocused()) panel.unfocus();
-            else if (click && r) {
-              const x = Number(click[1]) - 1;
-              const y = Number(click[2]) - 1;
-              if (x < r.col || x >= r.col + r.width || y < r.row || y >= r.row + r.height) panel.unfocus();
-            }
-            return undefined;
-          };
-          const listeners: Set<unknown> | undefined = (tui as any).inputListeners;
-          if (listeners) {
-            const rest = [...listeners];
-            listeners.clear();
-            listeners.add(listener);
-            for (const l of rest) listeners.add(l);
-          } else tui.addInputListener(listener);
-          return new FmPanel(tui, theme, turns, () => {
-            panel?.unfocus();
-            panel?.setHidden(true);
-          }, panelAnswer);
-        },
-        {
-          overlay: true,
-          overlayOptions: { anchor: "top-right", width: "35%", minWidth: 32, margin: { top: 1, right: 2 }, visible: (w) => w >= 100 },
-          onHandle: (h) => { panel = h; },
-        },
-      );
+  const openPanel = (ctx: ExtensionContext, focus: boolean) => {
+    if (panel) {
+      panel.setHidden(false);
+      if (focus) panel.focus();
       return;
     }
-    if (panel.isFocused()) {
+    void ctx.ui.custom<void>(
+      (tui, theme) => {
+        const listener = (data: string) => {
+          if (!panel) return undefined;
+          const click = data.match(/^\x1b\[<0;(\d+);(\d+)M$/);
+          const r = panel.getBounds();
+          if (!panel.isFocused()) panel.unfocus();
+          else if (click && r) {
+            const x = Number(click[1]) - 1;
+            const y = Number(click[2]) - 1;
+            if (x < r.col || x >= r.col + r.width || y < r.row || y >= r.row + r.height) panel.unfocus();
+          }
+          return undefined;
+        };
+        const listeners: Set<unknown> | undefined = (tui as any).inputListeners;
+        if (listeners) {
+          const rest = [...listeners];
+          listeners.clear();
+          listeners.add(listener);
+          for (const l of rest) listeners.add(l);
+        } else tui.addInputListener(listener);
+        view = new FmPanel(tui, theme, turns, () => {
+          panel?.unfocus();
+          panel?.setHidden(true);
+        }, panelAnswer);
+        return view;
+      },
+      {
+        overlay: true,
+        overlayOptions: { anchor: "top-right", width: "35%", minWidth: 32, margin: { top: 1, right: 2 }, visible: (w) => w >= 100 },
+        onHandle: (h) => {
+          panel = h;
+          if (!focus) h.unfocus();
+        },
+      },
+    );
+  };
+
+  const togglePanel = (ctx: ExtensionContext) => {
+    if (!ctx.hasUI) return;
+    if (!panel || panel.isHidden()) openPanel(ctx, true);
+    else if (panel.isFocused()) {
       panel.unfocus();
       panel.setHidden(true);
-    } else {
-      panel.setHidden(false);
-      panel.focus();
+    } else panel.focus();
+  };
+
+  const side = (withContext: boolean) => async (args: string, ctx: ExtensionContext) => {
+    const q = (withContext ? "+" : "") + args.trim();
+    if (!ctx.hasUI) {
+      if (q.replace("+", "")) process.stdout.write(`[fm] ${await panelAnswer(q)}\n`);
+      return;
     }
+    openPanel(ctx, !args.trim());
+    if (args.trim()) void view?.submit(q);
   };
 
   pi.registerCommand("fm-panel", { description: "Open the fm side chat panel (Ctrl+Shift+A)", handler: async (_a, ctx) => togglePanel(ctx) });
   pi.registerShortcut(PANEL_KEY, { description: "Toggle the fm side chat panel", handler: (ctx) => togglePanel(ctx) });
 
-  pi.registerCommand("fm", { description: "Ask Apple fm a side question (not added to the model's context)", handler: side(false) });
-  pi.registerCommand("fm+", { description: "Ask fm about the current session (not added to the model's context)", handler: side(true) });
+  pi.registerCommand("fm", { description: "Ask fm in the side panel (not added to the model's context)", handler: side(false) });
+  pi.registerCommand("fm+", { description: "Ask fm about the current session in the side panel", handler: side(true) });
 
   // ---- TOOLS ----
 
