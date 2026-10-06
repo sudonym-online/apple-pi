@@ -427,10 +427,9 @@ export default function (pi: ExtensionAPI) {
     if (args.trim()) void view?.submit(q);
   };
 
-  pi.registerCommand("fm-panel", { description: "Open the fm side chat panel (Ctrl+Shift+A)", handler: async (_a, ctx) => togglePanel(ctx) });
   pi.registerShortcut(PANEL_KEY, { description: "Toggle the fm side chat panel", handler: (ctx) => togglePanel(ctx) });
 
-  pi.registerCommand("fm", { description: "Ask fm in the side panel (not added to the model's context)", handler: side(false) });
+  pi.registerCommand("fm", { description: "Ask fm in the side panel, or open it (Ctrl+Shift+A). Not added to the model's context", handler: side(false) });
   pi.registerCommand("fm+", { description: "Ask fm about the current session in the side panel", handler: side(true) });
 
   // ---- TOOLS ----
