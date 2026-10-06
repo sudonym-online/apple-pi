@@ -83,7 +83,7 @@ apple-pi does not register models. If you use Ollama, add the model to `~/.pi/ag
 |---|---|
 | `/fm <question>` | Ask a side question. |
 | `/fm+ <question>` | Ask a side question about the current session. |
-| `/fm-panel` or Ctrl+Shift+A | Open the fm side chat on the right. Click the panel or the main input to type in it. Press Esc to close the panel. The chat stays until pi exits. Start a question with `+` to ask about the current session. The chat does not go into the main model's context. |
+| `/fm-panel` or Ctrl+Shift+A | Open the fm side chat on the right. Click the panel to type to fm. Click anywhere else to type to the main model. Press Esc to close the panel. The chat stays until pi exits. Start a question with `+` to ask about the current session. The chat does not go into the main model's context. |
 | `/fm-think off` | Turn the think picker off. `/fm-think on` turns it on again. |
 | `/remember <fact>` | Add a fact to core memory. |
 | `/memory` | Show the memory files and the text that apple-pi adds to the system prompt. |
