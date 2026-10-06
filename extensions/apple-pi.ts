@@ -289,6 +289,7 @@ export default function (pi: ExtensionAPI) {
   let lastRoute = "-";
   let memory: string | undefined;
   let lastMessages: any[] = [];
+  let sessionCtx: ExtensionContext | undefined;
   let captures = 0;
 
   const status = (ctx: ExtensionContext) => {
@@ -298,6 +299,7 @@ export default function (pi: ExtensionAPI) {
   // ---- LIFECYCLE ----
 
   pi.on("session_start", async (_e, ctx) => {
+    sessionCtx = ctx;
     if (!helperReady() && ctx.hasUI) ctx.ui.notify(BUILD_HINT, "warning");
     void rollup().catch(() => {});
     status(ctx);
@@ -305,6 +307,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("agent_end", async (e, ctx) => {
     lastMessages = e.messages as any[];
+    sessionCtx = ctx;
     try {
       if (capture(lastMessages, ctx.cwd)) captures++;
       status(ctx);
@@ -351,20 +354,29 @@ export default function (pi: ExtensionAPI) {
   let panel: OverlayHandle | undefined;
   let view: FmPanel | undefined;
 
+  const sessionText = () => {
+    const sm: any = sessionCtx?.sessionManager;
+    const entries: any[] = sm?.buildContextEntries?.() ?? sm?.getBranch?.() ?? [];
+    const summaries = entries.filter((e) => e.type === "compaction" || e.type === "branch_summary").map((e) => `SUMMARY OF THE EARLIER PART:\n${e.summary}`);
+    return [...summaries, transcript(entries.filter((e) => e.type === "message").map((e) => e.message), 200_000)].filter(Boolean).join("\n\n");
+  };
+
   const panelAnswer = async (q: string) => {
-    const withContext = q.startsWith("+");
-    const question = withContext ? q.slice(1).trim() : q;
+    const deep = q.startsWith("+");
+    const question = deep ? q.slice(1).trim() : q;
+    const session = sessionText();
     const earlier = turns.slice(0, -1).slice(-6).map((t) => `USER: ${t.q}\nFM: ${t.a}`).join("\n");
     const content = [
-      withContext ? `SESSION TRANSCRIPT:\n${transcript(lastMessages, 8_000)}` : "",
-      earlier ? `EARLIER CHAT:\n${earlier}` : "",
+      session ? `MAIN SESSION:\n${fit(session, deep ? 4_000 : 2_500)}` : "",
+      earlier ? `EARLIER SIDE CHAT (USER and you):\n${fit(earlier, 1_000)}` : "",
     ].filter(Boolean).join("\n\n");
-    const instr = "You are a side chat next to a coding agent. Answer briefly and precisely. Say if you are unsure.";
+    const instr = "You are a side chat. The person talking to you is the USER in the main session below. ASSISTANT is their main AI assistant, not you. Use the main session only to answer questions about it. Reply with only your answer, briefly and precisely. Never repeat or quote the session format.";
     const a = content ? await ask(instr, content, question) : await fm(["-i", instr, question]);
     return a ?? "fm did not answer (unavailable, timed out, or refused).";
   };
 
   const openPanel = (ctx: ExtensionContext, focus: boolean) => {
+    sessionCtx = ctx;
     if (panel) {
       panel.setHidden(false);
       if (focus) panel.focus();
@@ -399,7 +411,7 @@ export default function (pi: ExtensionAPI) {
       },
       {
         overlay: true,
-        overlayOptions: { anchor: "top-right", width: "35%", minWidth: 32, margin: { top: 1, right: 3 }, visible: (w) => w >= 100 },
+        overlayOptions: { anchor: "top-right", width: "35%", minWidth: 32, margin: { top: 1, right: 2 }, visible: (w) => w >= 100 },
         onHandle: (h) => {
           panel = h;
           if (!focus) h.unfocus();
@@ -419,6 +431,7 @@ export default function (pi: ExtensionAPI) {
 
   const side = (withContext: boolean) => async (args: string, ctx: ExtensionContext) => {
     const q = (withContext ? "+" : "") + args.trim();
+    sessionCtx = ctx;
     if (!ctx.hasUI) {
       if (q.replace("+", "")) process.stdout.write(`[fm] ${await panelAnswer(q)}\n`);
       return;
@@ -430,7 +443,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerShortcut(PANEL_KEY, { description: "Toggle the fm side chat panel", handler: (ctx) => togglePanel(ctx) });
 
   pi.registerCommand("fm", { description: "Ask fm in the side panel, or open it (Ctrl+Shift+A). Not added to the model's context", handler: side(false) });
-  pi.registerCommand("fm+", { description: "Ask fm about the current session in the side panel", handler: side(true) });
+  pi.registerCommand("fm+", { description: "Ask fm in the side panel with more of the current session", handler: side(true) });
 
   // ---- TOOLS ----
 
