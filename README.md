@@ -11,6 +11,7 @@ apple-pi does not replace the main model. It does small jobs on the Mac so that 
 | Think picker | Before each prompt, it decides if the prompt needs reasoning. Easy prompts run with thinking off. | Apple Foundation Model |
 | `/fm <question>` | Answers a side question. The answer does not go into the main model's context. | Apple Foundation Model |
 | `/fm+ <question>` | Answers a side question about the current session. | Apple Foundation Model |
+| `/fm-panel` | Opens a side chat with fm on the right side of pi. The terminal must be 100 or more columns wide. | Apple Foundation Model |
 | `read_qr` tool | Decodes a QR code or barcode in an image. | Apple Foundation Model with the barcode tool |
 | `transcribe_audio` tool | Converts speech in an audio file to text. | Apple Speech |
 | `translate` tool | Translates text between installed language pairs. | Apple Translation |
@@ -82,6 +83,7 @@ apple-pi does not register models. If you use Ollama, add the model to `~/.pi/ag
 |---|---|
 | `/fm <question>` | Ask a side question. |
 | `/fm+ <question>` | Ask a side question about the current session. |
+| `/fm-panel` or Ctrl+Shift+A | Open the fm side chat on the right. Press Esc to go back to the main chat. Press the shortcut again to hide the panel. Start a question with `+` to ask about the current session. The chat does not go into the main model's context. |
 | `/fm-think off` | Turn the think picker off. `/fm-think on` turns it on again. |
 | `/remember <fact>` | Add a fact to core memory. |
 | `/memory` | Show the memory files and the text that apple-pi adds to the system prompt. |
