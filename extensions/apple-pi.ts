@@ -167,7 +167,7 @@ class FmPanel {
     private tui: any,
     private theme: any,
     private turns: Turn[],
-    private onKey: (key: "escape" | "toggle") => void,
+    private onClose: () => void,
     private answer: (q: string) => Promise<string>,
   ) {
     this.input.onSubmit = (v) => void this.submit(v);
@@ -185,10 +185,13 @@ class FmPanel {
   }
 
   handleInput(data: string) {
-    if (matchesKey(data, "escape")) return this.onKey("escape");
-    if (matchesKey(data, PANEL_KEY)) return this.onKey("toggle");
+    if (matchesKey(data, "escape") || matchesKey(data, PANEL_KEY)) return this.onClose();
     this.input.handleInput(data);
     this.tui.requestRender();
+  }
+
+  handleMouse(e: { type: string; button: string }) {
+    return e.button === "left" && e.type === "press" ? { focus: true } : { handled: true };
   }
 
   invalidate() {
@@ -207,7 +210,8 @@ class FmPanel {
     ]).map((l) => ` ${l}`);
     const height = Math.max(3, this.tui.terminal.rows - PANEL_FREE_ROWS - 4);
     const shown = body.slice(-height);
-    while (shown.length < height) shown.push(this.turns.length ? "" : th.fg("dim", " Ask fm. Esc: back to chat."));
+    if (!shown.length) shown.push(th.fg("dim", " Ask fm. Esc closes. Click to type."));
+    while (shown.length < height) shown.push("");
     this.input.focused = this.focused;
     return [
       b("\u256d\u2500") + th.fg("accent", " \uF8FF fm ") + b("\u2500".repeat(Math.max(0, w - 7)) + "\u256e"),
@@ -320,10 +324,16 @@ export default function (pi: ExtensionAPI) {
     if (!ctx.hasUI) return;
     if (!panel) {
       void ctx.ui.custom<void>(
-        (tui, theme) => new FmPanel(tui, theme, turns, (key) => {
-          panel?.unfocus();
-          if (key === "toggle") panel?.setHidden(true);
-        }, panelAnswer),
+        (tui, theme) => {
+          tui.addInputListener(() => {
+            if (panel && !panel.isFocused()) panel.unfocus();
+            return undefined;
+          });
+          return new FmPanel(tui, theme, turns, () => {
+            panel?.unfocus();
+            panel?.setHidden(true);
+          }, panelAnswer);
+        },
         {
           overlay: true,
           overlayOptions: { anchor: "top-right", width: "35%", minWidth: 32, margin: { top: 1, right: 1 }, visible: (w) => w >= 100 },
