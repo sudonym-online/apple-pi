@@ -23,26 +23,43 @@ apple-pi does not replace the main model. It does small jobs on the Mac so that 
 
 - macOS 26 or later on Apple silicon, with Apple Intelligence turned on.
 - The `fm` command (`/usr/bin/fm`).
-- Xcode Command Line Tools, for `swiftc`.
 - pi 1.0 or later.
 - Optional: ripgrep (`rg`). apple-pi uses `grep` if `rg` is not installed.
 
 ## Install
 
-1. Build the helper:
+1. Install the package from npm:
+
+   ```sh
+   pi install npm:@sudonym-online/apple-pi
+   ```
+
+2. Start pi. The status line shows ` - · mem +0`.
+
+The npm package contains a built helper for Apple silicon.
+
+## Install from source
+
+You need the Xcode Command Line Tools for `swiftc`.
+
+1. Clone the repository:
+
+   ```sh
+   git clone https://github.com/sudonym-online/apple-pi.git
+   ```
+
+2. Build the helper:
 
    ```sh
    cd apple-pi
    swiftc -O helper/applepi.swift -o helper/applepi
    ```
 
-2. Add the package to pi:
+3. Add the package to pi:
 
    ```sh
    pi install ./apple-pi
    ```
-
-3. Start pi. The status line shows ` - · mem +0`.
 
 To try apple-pi for one run without installing it, use `pi -e ./apple-pi`.
 
