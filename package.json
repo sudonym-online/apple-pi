@@ -1,6 +1,6 @@
 {
   "name": "@sudonym-online/apple-pi",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "pi extension that adds Apple on-device models as a sidecar: think picker, side questions, tiered memory, and on-device tools",
   "keywords": [
     "pi-package",
