@@ -351,7 +351,7 @@ export default function (pi: ExtensionAPI) {
         },
         {
           overlay: true,
-          overlayOptions: { anchor: "top-right", width: "35%", minWidth: 32, margin: { top: 1, right: 1 }, visible: (w) => w >= 100 },
+          overlayOptions: { anchor: "top-right", width: "35%", minWidth: 32, margin: { top: 1, right: 2 }, visible: (w) => w >= 100 },
           onHandle: (h) => { panel = h; },
         },
       );
