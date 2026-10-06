@@ -167,7 +167,7 @@ export default function (pi: ExtensionAPI) {
   let captures = 0;
 
   const status = (ctx: ExtensionContext) => {
-    if (ctx.hasUI) ctx.ui.setStatus("apple-pi", `fm: ${lastRoute} · mem +${captures}`);
+    if (ctx.hasUI) ctx.ui.setStatus("apple-pi", `\uF8FF ${lastRoute} · mem +${captures}`);
   };
 
   // ---- LIFECYCLE ----
@@ -217,7 +217,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerEntryRenderer<{ q: string; a: string }>("apple-pi-side", (entry, _opts, theme) => {
     const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
-    box.addChild(new Text(`${theme.fg("accent", "[fm]")} ${theme.fg("dim", entry.data?.q ?? "")}`, 0, 0));
+    box.addChild(new Text(`${theme.fg("accent", "\uF8FF fm")} ${theme.fg("dim", entry.data?.q ?? "")}`, 0, 0));
     box.addChild(new Text(entry.data?.a ?? "", 0, 0));
     return box;
   });

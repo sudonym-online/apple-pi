@@ -42,7 +42,7 @@ apple-pi does not replace the main model. It does small jobs on the Mac so that 
    pi install ./apple-pi
    ```
 
-3. Start pi. The status line shows `fm: - · mem +0`.
+3. Start pi. The status line shows ` - · mem +0`.
 
 To try apple-pi for one run without installing it, use `pi -e ./apple-pi`.
 
