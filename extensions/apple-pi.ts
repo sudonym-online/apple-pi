@@ -1,6 +1,8 @@
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Box, Input, matchesKey, Text, truncateToWidth, wrapTextWithAnsi, type OverlayHandle } from "@earendil-works/pi-tui";
+import {
+  Box, Input, matchesKey, sliceByColumn, stripTerminalSequences, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi, type OverlayHandle,
+} from "@earendil-works/pi-tui";
 import { execFile } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -158,10 +160,14 @@ function memoryBlock(): string {
 // ---- PANEL ----
 
 type Turn = { q: string; a: string };
+type Point = [row: number, col: number];
 
 class FmPanel {
   focused = false;
   input = new Input({ prompt: "\u203a " });
+  lines: string[] = [];
+  sel?: { a: Point; b: Point };
+  copied = false;
 
   constructor(
     private tui: any,
@@ -178,6 +184,7 @@ class FmPanel {
     if (!q) return;
     this.input.setValue("");
     const turn = { q, a: "\u2026" };
+    this.sel = undefined;
     this.turns.push(turn);
     this.tui.requestRender();
     turn.a = await this.answer(q);
@@ -186,12 +193,49 @@ class FmPanel {
 
   handleInput(data: string) {
     if (matchesKey(data, "escape") || matchesKey(data, PANEL_KEY)) return this.onClose();
+    this.sel = undefined;
+    this.copied = false;
     this.input.handleInput(data);
     this.tui.requestRender();
   }
 
-  handleMouse(e: { type: string; button: string }) {
-    return e.button === "left" && e.type === "press" ? { focus: true } : { handled: true };
+  handleMouse(e: { type: string; button: string; x: number; y: number }) {
+    const p: Point = [Math.min(Math.max(e.y - 1, 0), Math.max(0, this.lines.length - 1)), Math.max(e.x - 1, 0)];
+    if (e.type === "press") {
+      if (e.button !== "left") return { handled: true };
+      this.sel = { a: p, b: p };
+      this.copied = false;
+      return { focus: true, capture: true };
+    }
+    if (!this.sel) return { handled: true };
+    if (e.type === "drag") this.sel.b = p;
+    if (e.type === "release") {
+      const text = this.selected();
+      if (text) {
+        this.copied = true;
+        void run("pbcopy", [], text);
+      } else this.sel = undefined;
+    }
+    return { handled: true, render: true };
+  }
+
+  range(): [Point, Point] | undefined {
+    if (!this.sel) return undefined;
+    const [a, b] = [this.sel.a, this.sel.b].sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+    return a[0] === b[0] && a[1] === b[1] ? undefined : [a, b];
+  }
+
+  selected(): string {
+    const r = this.range();
+    if (!r) return "";
+    const out: string[] = [];
+    for (let i = r[0][0]; i <= r[1][0]; i++) {
+      const start = i === r[0][0] ? r[0][1] : 0;
+      const end = i === r[1][0] ? r[1][1] + 1 : visibleWidth(this.lines[i]);
+      const part = sliceByColumn(this.lines[i], start, end - start).trimEnd();
+      out.push(start === 0 ? part.replace(/^ /, "") : part);
+    }
+    return out.join("\n").trim();
   }
 
   invalidate() {
@@ -213,9 +257,19 @@ class FmPanel {
     if (!shown.length) shown.push(th.fg("dim", " Ask fm. Esc closes. Click to type."));
     while (shown.length < height) shown.push("");
     this.input.focused = this.focused;
+    this.lines = shown.map(stripTerminalSequences);
+    const r = this.range();
+    const body2 = shown.map((l, i) => {
+      if (!r || i < r[0][0] || i > r[1][0]) return l;
+      const p = this.lines[i];
+      const start = i === r[0][0] ? r[0][1] : 0;
+      const end = i === r[1][0] ? r[1][1] + 1 : w;
+      return sliceByColumn(p, 0, start) + "\x1b[7m" + sliceByColumn(p, start, end - start) + "\x1b[27m" + sliceByColumn(p, end, w);
+    });
+    const title = ` \uF8FF fm${this.copied ? " \u00b7 copied" : ""} `;
     return [
-      b("\u256d\u2500") + th.fg("accent", " \uF8FF fm ") + b("\u2500".repeat(Math.max(0, w - 7)) + "\u256e"),
-      ...shown.map(row),
+      b("\u256d\u2500") + th.fg("accent", title) + b("\u2500".repeat(Math.max(0, w - 1 - visibleWidth(title))) + "\u256e"),
+      ...body2.map(row),
       b("\u251c" + "\u2500".repeat(w) + "\u2524"),
       ...this.input.render(w).map(row),
       b("\u2570" + "\u2500".repeat(w) + "\u256f"),
