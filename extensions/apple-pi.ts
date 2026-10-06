@@ -1,6 +1,6 @@
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Box, Text } from "@earendil-works/pi-tui";
+import { Box, Input, matchesKey, Text, truncateToWidth, wrapTextWithAnsi, type OverlayHandle } from "@earendil-works/pi-tui";
 import { execFile } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -155,6 +155,73 @@ function memoryBlock(): string {
   return `# Memory (from earlier sessions; use memory_search for more)\n${body}`;
 }
 
+// ---- PANEL ----
+
+type Turn = { q: string; a: string };
+
+class FmPanel {
+  focused = false;
+  input = new Input({ prompt: "\u203a " });
+
+  constructor(
+    private tui: any,
+    private theme: any,
+    private turns: Turn[],
+    private onKey: (key: "escape" | "toggle") => void,
+    private answer: (q: string) => Promise<string>,
+  ) {
+    this.input.onSubmit = (v) => void this.submit(v);
+  }
+
+  async submit(v: string) {
+    const q = v.trim();
+    if (!q) return;
+    this.input.setValue("");
+    const turn = { q, a: "\u2026" };
+    this.turns.push(turn);
+    this.tui.requestRender();
+    turn.a = await this.answer(q);
+    this.tui.requestRender();
+  }
+
+  handleInput(data: string) {
+    if (matchesKey(data, "escape")) return this.onKey("escape");
+    if (matchesKey(data, PANEL_KEY)) return this.onKey("toggle");
+    this.input.handleInput(data);
+    this.tui.requestRender();
+  }
+
+  invalidate() {
+    this.input.invalidate();
+  }
+
+  render(width: number): string[] {
+    const th = this.theme;
+    const w = Math.max(1, width - 2);
+    const b = (s: string) => th.fg("border", s);
+    const row = (s: string) => b("\u2502") + truncateToWidth(s, w, "\u2026", true) + b("\u2502");
+    const body = this.turns.flatMap((t) => [
+      ...wrapTextWithAnsi(th.fg("accent", "\u203a ") + th.fg("dim", t.q), w - 1),
+      ...wrapTextWithAnsi(t.a, w - 1),
+      "",
+    ]).map((l) => ` ${l}`);
+    const height = Math.max(3, this.tui.terminal.rows - PANEL_FREE_ROWS - 4);
+    const shown = body.slice(-height);
+    while (shown.length < height) shown.push(this.turns.length ? "" : th.fg("dim", " Ask fm. Esc: back to chat."));
+    this.input.focused = this.focused;
+    return [
+      b("\u256d\u2500") + th.fg("accent", " \uF8FF fm ") + b("\u2500".repeat(Math.max(0, w - 7)) + "\u256e"),
+      ...shown.map(row),
+      b("\u251c" + "\u2500".repeat(w) + "\u2524"),
+      ...this.input.render(w).map(row),
+      b("\u2570" + "\u2500".repeat(w) + "\u256f"),
+    ];
+  }
+}
+
+const PANEL_KEY = "ctrl+shift+a";
+const PANEL_FREE_ROWS = 8;
+
 // ---- EXTENSION ----
 
 export default function (pi: ExtensionAPI) {
@@ -232,6 +299,50 @@ export default function (pi: ExtensionAPI) {
     pi.appendEntry("apple-pi-side", { q, a: answer });
     if (!ctx.hasUI) process.stdout.write(`[fm] ${answer}\n`);
   };
+
+  const turns: Turn[] = [];
+  let panel: OverlayHandle | undefined;
+
+  const panelAnswer = async (q: string) => {
+    const withContext = q.startsWith("+");
+    const question = withContext ? q.slice(1).trim() : q;
+    const earlier = turns.slice(0, -1).slice(-6).map((t) => `USER: ${t.q}\nFM: ${t.a}`).join("\n");
+    const content = [
+      withContext ? `SESSION TRANSCRIPT:\n${transcript(lastMessages, 8_000)}` : "",
+      earlier ? `EARLIER CHAT:\n${earlier}` : "",
+    ].filter(Boolean).join("\n\n");
+    const instr = "You are a side chat next to a coding agent. Answer briefly and precisely. Say if you are unsure.";
+    const a = content ? await ask(instr, content, question) : await fm(["-i", instr, question]);
+    return a ?? "fm did not answer (unavailable, timed out, or refused).";
+  };
+
+  const togglePanel = (ctx: ExtensionContext) => {
+    if (!ctx.hasUI) return;
+    if (!panel) {
+      void ctx.ui.custom<void>(
+        (tui, theme) => new FmPanel(tui, theme, turns, (key) => {
+          panel?.unfocus();
+          if (key === "toggle") panel?.setHidden(true);
+        }, panelAnswer),
+        {
+          overlay: true,
+          overlayOptions: { anchor: "top-right", width: "35%", minWidth: 32, margin: { top: 1, right: 1 }, visible: (w) => w >= 100 },
+          onHandle: (h) => { panel = h; },
+        },
+      );
+      return;
+    }
+    if (panel.isFocused()) {
+      panel.unfocus();
+      panel.setHidden(true);
+    } else {
+      panel.setHidden(false);
+      panel.focus();
+    }
+  };
+
+  pi.registerCommand("fm-panel", { description: "Open the fm side chat panel (Ctrl+Shift+A)", handler: async (_a, ctx) => togglePanel(ctx) });
+  pi.registerShortcut(PANEL_KEY, { description: "Toggle the fm side chat panel", handler: (ctx) => togglePanel(ctx) });
 
   pi.registerCommand("fm", { description: "Ask Apple fm a side question (not added to the model's context)", handler: side(false) });
   pi.registerCommand("fm+", { description: "Ask fm about the current session (not added to the model's context)", handler: side(true) });
