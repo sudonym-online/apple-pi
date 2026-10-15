@@ -103,6 +103,23 @@ const today = () => new Date().toLocaleDateString("en-CA");
 const clock = () => new Date().toTimeString().slice(0, 5);
 const tilde = (p: string) => p.replace(homedir(), "~");
 
+// ---- PREFS ----
+
+const PREFS = join(homedir(), ".apple-pi", "prefs.json");
+
+function loadPrefs(): { think?: boolean } {
+  try {
+    return JSON.parse(readFileSync(PREFS, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function savePrefs(prefs: object) {
+  mkdirSync(dirname(PREFS), { recursive: true });
+  writeFileSync(PREFS, JSON.stringify(prefs, null, 2) + "\n");
+}
+
 // ---- MEMORY ----
 
 const MEM = process.env.APPLE_PI_MEMORY ?? join(homedir(), ".apple-pi", "memory");
@@ -342,7 +359,8 @@ const PANEL_FREE_ROWS = 8;
 // ---- EXTENSION ----
 
 export default function (pi: ExtensionAPI) {
-  let thinkOn = true;
+  const prefs = loadPrefs();
+  let thinkOn = prefs.think ?? true;
   let base: string | undefined;
   let lastSet: string | undefined;
   let lastRoute = "-";
@@ -395,6 +413,8 @@ export default function (pi: ExtensionAPI) {
     description: "Turn the fm think/no-think picker on or off",
     handler: async (args, ctx) => {
       thinkOn = args.trim() !== "off";
+      prefs.think = thinkOn;
+      savePrefs(prefs);
       if (!thinkOn && base) pi.setThinkingLevel(base as any);
       ctx.ui.notify(`apple-pi think picker: ${thinkOn ? "on" : "off"}`, "info");
     },
