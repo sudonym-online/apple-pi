@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  chunks, cleanPath, daysBetween, estTokens, fit, FM_MAX_TOKENS, grounded, matchName, locate, monthEnd, newFacts, parseAnswer, parseEntries, renderEntries, stripLeadIn, weekOf, weekSections,
+  chunks, cleanPath, daysBetween, estTokens, fit, FM_MAX_TOKENS, grounded, matchName, locate, monthEnd, newFacts, parseAnswer, parseEntries, renderEntries, stripLeadIn, turnSources, weekOf, weekSections,
 } from "../src/lib.ts";
 
 // ---- PROCESS ----
@@ -353,8 +353,44 @@ class FmPanel {
   }
 }
 
+type NotesState = { text: string; sources: string[]; busy: boolean };
+
+class NotesPanel {
+  md = new Markdown("", 0, 0, getMarkdownTheme());
+
+  constructor(private tui: any, private theme: any, private state: () => NotesState) {}
+
+  invalidate() {
+    this.md.invalidate();
+  }
+
+  render(width: number): string[] {
+    const th = this.theme;
+    const st = this.state();
+    const w = Math.max(1, width - 2);
+    const b = (s: string) => th.fg("border", s);
+    const row = (s: string) => b("\u2502") + truncateToWidth(` ${s}`, w, "\u2026", true) + b("\u2502");
+    const src = st.sources.length
+      ? ["", th.fg("accent", "sources"), ...st.sources.slice(-6).flatMap((s) => wrapTextWithAnsi(th.fg("dim", `\u2022 ${s}`), w - 1))]
+      : [];
+    const spin = st.busy ? [th.fg("dim", `${SPINNER[Math.floor(Date.now() / 100) % SPINNER.length]} updating`)] : [];
+    this.md.setText(st.text);
+    let body = st.text ? this.md.render(w - 1) : [th.fg("dim", "Notes show after the first answer.")];
+    const room = Math.max(2, this.tui.terminal.rows - PANEL_FREE_ROWS - 4 - src.length - spin.length);
+    if (body.length > room) body = [th.fg("dim", "\u2026"), ...body.slice(-(room - 1))];
+    const title = " \uF8FF notes ";
+    return [
+      b("\u256d\u2500") + th.fg("accent", title) + b("\u2500".repeat(Math.max(0, w - 1 - visibleWidth(title))) + "\u256e"),
+      ...[...spin, ...body, ...src].map(row),
+      b("\u2570" + "\u2500".repeat(w) + "\u256f"),
+    ];
+  }
+}
+
 const PANEL_KEY = "ctrl+shift+a";
+const NOTES_KEY = "ctrl+shift+d";
 const PANEL_FREE_ROWS = 8;
+const NOTES_INSTR = "You write short notes for one turn of a chat between USER and an AI ASSISTANT. Write one bullet with the USER question and the final answer. Under it, add 1-4 sub-bullets with the key work (formulas and steps) and important facts. Copy formulas and numbers exactly as written. Never add a step, formula, or number that is not in the turn. Skip work the ASSISTANT abandoned or redid. Skip code, tool noise, and greetings. Use plain Markdown bullets, no headings, no code blocks. Each line under 15 words. Write only the notes.";
 
 // ---- EXTENSION ----
 
@@ -457,6 +493,7 @@ export default function (pi: ExtensionAPI) {
 
   const openPanel = (ctx: ExtensionContext, focus: boolean) => {
     sessionCtx = ctx;
+    notesPanel?.setHidden(true);
     if (panel) {
       panel.setHidden(false);
       if (focus) panel.focus();
@@ -525,6 +562,72 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerCommand("fm", { description: "Ask fm in the side panel, or open it (Ctrl+Shift+A). Not added to the model's context", handler: side(false) });
   pi.registerCommand("fm+", { description: "Ask fm in the side panel with more of the current session", handler: side(true) });
+
+  // ---- NOTES ----
+
+  let notes: string[] = [];
+  let draft = "";
+  let sources: string[] = [];
+  let busy = false;
+  let notesPanel: OverlayHandle | undefined;
+  let notesTui: any;
+  let notesJob: Promise<unknown> = Promise.resolve();
+
+  const showNotes = (ctx: ExtensionContext, force: boolean) => {
+    if (!ctx.hasUI) return;
+    if (panel && !panel.isHidden()) {
+      if (!force) return;
+      panel.unfocus();
+      panel.setHidden(true);
+    }
+    if (notesPanel) return notesPanel.setHidden(false);
+    void ctx.ui.custom<void>(
+      (tui, theme) => {
+        notesTui = tui;
+        return new NotesPanel(tui, theme, () => ({ text: [...notes, ...(busy && draft ? [draft] : [])].join("\n\n"), sources, busy }));
+      },
+      {
+        overlay: true,
+        overlayOptions: { anchor: "top-right", width: "30%", minWidth: 32, margin: { top: 1, right: 3 }, visible: (w) => w >= 100, nonCapturing: true },
+        onHandle: (h) => (notesPanel = h),
+      },
+    );
+  };
+
+  const toggleNotes = (ctx: ExtensionContext) => {
+    if (notesPanel && !notesPanel.isHidden()) notesPanel.setHidden(true);
+    else showNotes(ctx, true);
+  };
+
+  const updateNotes = async (ctx: ExtensionContext) => {
+    const msgs = ctx.sessionManager.getBranch().filter((e: any) => e.type === "message").map((e: any) => e.message);
+    const start = msgs.findLastIndex((m: any) => m.role === "user");
+    if (start < 0) return;
+    const turn = msgs.slice(start);
+    sources = [...new Set([...sources, ...turnSources(turn)])];
+    busy = true;
+    draft = "";
+    showNotes(ctx, false);
+    const tick = setInterval(() => notesTui?.requestRender(), 100);
+    const out = await fmStream(["-i", NOTES_INSTR, "--text", fit(`TURN:\n${transcript(turn, 12_000)}`), "Write the notes for this turn."], (t) => (draft = t));
+    clearInterval(tick);
+    busy = false;
+    if (out) notes.push(out.replace(/^(\s*-\s*)(?:\u2022\s*|USER question:\s*)/gm, "$1"));
+    notesTui?.requestRender();
+  };
+
+  pi.on("session_start", () => {
+    notes = [];
+    sources = [];
+  });
+
+  pi.on("agent_settled", (e, ctx) => {
+    if (e.aborted || !ctx.hasUI) return;
+    notesJob = notesJob.then(() => updateNotes(ctx)).catch(() => {});
+  });
+
+  pi.registerShortcut(NOTES_KEY, { description: "Toggle the fm session notes panel", handler: (ctx) => toggleNotes(ctx) });
+  pi.registerCommand("notes", { description: "Toggle the fm session notes panel (Ctrl+Shift+D)", handler: async (_args, ctx) => toggleNotes(ctx) });
 
   // ---- TOOLS ----
 

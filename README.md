@@ -11,6 +11,7 @@ apple-pi does not replace the main model. It does small jobs on the Mac so that 
 | Think picker | Before each prompt, it decides if the prompt needs reasoning. Easy prompts run with thinking off. | Apple Foundation Model |
 | `/fm <question>` | Answers a side question in the fm panel. fm knows the main session. The answer does not go into the main model's context. | Apple Foundation Model |
 | `/fm+ <question>` | Same as `/fm`, but fm gets more of the main session. | Apple Foundation Model |
+| Notes panel | After each answer, fm writes short notes about the turn: the question, the answer, and the key work. The panel also lists the sources that the model read. | Apple Foundation Model |
 | `read_qr` tool | Decodes a QR code or barcode in an image. | Apple Foundation Model with the barcode tool |
 | `transcribe_audio` tool | Converts speech in an audio file to text. | Apple Speech |
 | `translate` tool | Translates text between installed language pairs. | Apple Translation |
@@ -100,6 +101,7 @@ apple-pi does not register models. If you use Ollama, add the model to `~/.pi/ag
 | `/fm <question>` | Ask a side question. The answer shows in the fm panel. `/fm` with no question opens the panel. |
 | `/fm+ <question>` | Ask a side question with more of the main session. The answer shows in the fm panel. The panel stays in `fm+` mode until you run `/fm`. `/fm+` with no question opens the panel in `fm+` mode. |
 | `/fm` or Ctrl+Shift+A | Open the fm side chat on the right. The terminal must be 100 or more columns wide. Click the panel to type to fm. Click anywhere else to type to the main model. Press Esc to close the panel. The chat stays until pi exits. Start a question with `+` to send more of the main session. The title then shows `fm+`. A spinner shows while fm thinks. The answer streams in as Markdown. The chat does not go into the main model's context. |
+| `/notes` or Ctrl+Shift+D | Show or hide the notes panel on the right. The panel opens by itself after each answer. It does not open over the fm panel. The terminal must be 100 or more columns wide. The notes do not go into the main model's context. A new session clears them. |
 | `/fm-think off` | Turn the think picker off. `/fm-think on` turns it on again. apple-pi saves this choice in `~/.apple-pi/prefs.json`. |
 | `/remember <fact>` | Add a fact to core memory. |
 | `/memory` | Show the memory files and the text that apple-pi adds to the system prompt. |

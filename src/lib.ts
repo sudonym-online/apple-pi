@@ -160,3 +160,16 @@ export function monthEnd(month: string): string {
   return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
 }
 
+// ---- NOTES ----
+
+export function turnSources(messages: any[]): string[] {
+  const failed = new Set(messages
+    .filter((m) => m.role === "toolResult" && (m.isError || /^(fetch failed|only http)/.test(String(m.content?.[0]?.text ?? ""))))
+    .map((m) => m.toolCallId));
+  const out = messages
+    .flatMap((m) => (m.role === "assistant" && Array.isArray(m.content) ? m.content : []))
+    .filter((c: any) => c.type === "toolCall" && !failed.has(c.id))
+    .map((c: any) => (c.name === "fetch_page" ? c.arguments?.url : c.name === "lookup" && c.arguments?.query ? `wikipedia: ${c.arguments.query}` : undefined))
+    .filter((s): s is string => !!s);
+  return [...new Set(out)];
+}

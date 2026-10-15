@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chunks, cleanPath, daysBetween, estTokens, matchName, fit, grounded, locate, monthEnd, newFacts, parseAnswer, parseEntries, stripLeadIn, weekOf, weekSections } from "../src/lib.ts";
+import { chunks, cleanPath, daysBetween, estTokens, matchName, fit, grounded, locate, monthEnd, newFacts, parseAnswer, parseEntries, stripLeadIn, turnSources, weekOf, weekSections } from "../src/lib.ts";
 
 test("estTokens counts digits and symbols as whole tokens", () => {
   assert.equal(estTokens("1234"), 4);
@@ -79,4 +79,17 @@ test("matchName finds macOS screenshot names with a narrow no-break space", () =
   const names = ["notes.md", "Screenshot 2026-10-05 at 10.14.58 AM.png"];
   assert.equal(matchName("Screenshot 2026-10-05 at 10.14.58 AM.png", names), names[1]);
   assert.equal(matchName("missing.png", names), undefined);
+});
+
+test("turnSources keeps fetched URLs and lookups, and drops failed fetches", () => {
+  const call = (id: string, name: string, args: object) => ({ role: "assistant", content: [{ type: "toolCall", id, name, arguments: args }] });
+  const result = (id: string, text: string) => ({ role: "toolResult", toolCallId: id, content: [{ type: "text", text }] });
+  const msgs = [
+    call("a", "lookup", { query: "sphere" }), result("a", "Sphere ..."),
+    call("b", "fetch_page", { url: "https://x.org/404" }), result("b", "fetch failed: HTTP 404"),
+    call("c", "fetch_page", { url: "https://en.wikipedia.org/wiki/Sphere" }), result("c", "From Wikipedia ..."),
+    call("d", "fetch_page", { url: "https://en.wikipedia.org/wiki/Sphere" }), result("d", "From Wikipedia ..."),
+    call("e", "bash", { command: "ls" }),
+  ];
+  assert.deepEqual(turnSources(msgs), ["wikipedia: sphere", "https://en.wikipedia.org/wiki/Sphere"]);
 });
