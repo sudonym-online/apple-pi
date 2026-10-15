@@ -16,7 +16,7 @@ apple-pi does not replace the main model. It does small jobs on the Mac so that 
 | `translate` tool | Translates text between installed language pairs. | Apple Translation |
 | `ask_file` tool | Answers a question about a large file. It returns exact lines with line numbers. | Apple Foundation Model |
 | `describe_image` tool | Describes an image in under 100 words. | Apple Foundation Model |
-| Memory | Keeps a log of each task, rolls it up by day and by week, and adds a short summary to each new session. | Plain code and Apple Foundation Model |
+| Memory | Keeps a log of each task, rolls it up by day, week, and month, saves facts about you, and adds a short summary to each new session. | Plain code and Apple Foundation Model |
 | `memory_search` tool | Searches the memory files with a keyword or regex. | ripgrep |
 
 ## Requirements
@@ -126,12 +126,16 @@ apple-pi keeps memory in `~/.apple-pi/memory/`. Set `APPLE_PI_MEMORY` to use a d
 | `now.md` | One line for each finished task: the prompt, the tools, and the result. | Plain code | After each task |
 | `today-YYYY-MM-DD.md` | One paragraph for each past day. | Apple Foundation Model | First session after that day |
 | `recent.md` | The day paragraphs from the last 7 days. | Plain code | Same pass |
-| `archive.md` | Day paragraphs older than 7 days, grouped by week. | Plain code | Same pass |
-| `core.md` | Facts and preferences that you add. | You, with `/remember` | When you run the command |
+| `archive.md` | Day paragraphs older than 7 days, grouped by week. The model only reads this file through `memory_search`. | Plain code | Same pass |
+| `week-YYYY-MM-DD.md` | One paragraph for each week in `archive.md`. | Apple Foundation Model | 14 days after the week starts |
+| `month-YYYY-MM.md` | One paragraph for each month of week paragraphs. | Apple Foundation Model | 14 days after the month ends |
+| `core.md` | Facts and preferences about you. | Apple Foundation Model, and you with `/remember` | Day pass, or when you run the command |
 
-At the start of a session, apple-pi adds `core.md`, the last 5 tasks from today, and `recent.md` to the system prompt. The limit is about 3,200 characters. The text does not change during the session, so the model can cache the prompt.
+At the start of a session, apple-pi adds `core.md`, the last 5 tasks from today, `recent.md`, the last 2 week paragraphs, and the last 2 month paragraphs to the system prompt. The limit is about 3,200 characters. The text does not change during the session, so the model can cache the prompt.
 
-The Apple model writes only the day paragraphs. apple-pi checks each paragraph against the source notes. If a paragraph contains a path, number, or name that is not in the notes, apple-pi keeps the raw notes instead.
+apple-pi checks each day, week, and month paragraph against the source notes. If a paragraph contains a path, number, or name that is not in the notes, apple-pi keeps the raw notes instead.
+
+For `core.md`, the Apple model reads only the prompts that you typed. apple-pi drops a fact if fewer than half of its words occur in those prompts. It also drops facts that are already in the file. Edit `core.md` to remove a wrong fact.
 
 ## Limits
 

@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  chunks, cleanPath, daysBetween, estTokens, fit, FM_MAX_TOKENS, grounded, matchName, locate, parseAnswer, parseEntries, renderEntries, stripLeadIn, weekOf,
+  chunks, cleanPath, daysBetween, estTokens, fit, FM_MAX_TOKENS, grounded, matchName, locate, monthEnd, newFacts, parseAnswer, parseEntries, renderEntries, stripLeadIn, weekOf, weekSections,
 } from "../src/lib.ts";
 
 // ---- PROCESS ----
@@ -113,6 +113,17 @@ const INJECT_MAX_CHARS = 3_200;
 const DAY_INSTR = `You condense one day of work log notes into one short paragraph (max 4 sentences).
 Keep file names, paths, commands, and numbers exactly as written. Do not add facts. No other text.`;
 
+const FACT_INSTR = `Extract facts about the user from these messages they typed: preferences, habits, classes, projects, tools, how they want answers.
+Write each as a short note in third person, e.g. "prefers X". Only facts the user stated. One per line, starting with "- ". If none, reply NONE.`;
+
+const ROLL_INSTR = (span: string) => `You condense ${span} of work log summaries into one short paragraph (max 5 sentences).
+Keep file names, paths, commands, and numbers exactly as written. Do not add facts. No other text.`;
+
+const condense = async (instr: string, raw: string) => {
+  const out = await ask(instr, raw, "Write the paragraph.", 60_000);
+  return out && grounded(out, raw).ok ? out : raw.trim();
+};
+
 const oneLine = (s: string, max: number) => s.replace(/\*\*|^#+\s*|`/gm, "").replace(/\s+/g, " ").trim().slice(0, max);
 
 function capture(messages: any[], cwd: string): boolean {
@@ -140,9 +151,10 @@ async function rollup(): Promise<void> {
   for (const day of past) {
     const dayEntries = entries.filter((e) => e.date === day);
     const raw = renderEntries(dayEntries);
-    const out = await ask(DAY_INSTR, raw, "Write the paragraph.", 60_000);
-    const summary = out && grounded(out, raw).ok ? out : raw.trim();
-    writeFileSync(memFile(`today-${day}.md`), `## ${day}\n${summary}\n`);
+    writeFileSync(memFile(`today-${day}.md`), `## ${day}\n${await condense(DAY_INSTR, raw)}\n`);
+    const asked = dayEntries.map((e) => e.body.split(" | ")[0].replace(/^asked: /, "")).join("\n");
+    const facts = newFacts((await ask(FACT_INSTR, asked, "List the facts.", 60_000)) ?? "", asked, readMem("core.md"));
+    if (facts.length) appendFileSync(memFile("core.md"), facts.map((f) => `- ${f}\n`).join(""));
     const keep = parseEntries(readMem("now.md")).filter((e) => e.date !== day);
     writeFileSync(memFile("now.md"), renderEntries(keep));
   }
@@ -156,7 +168,22 @@ async function rollup(): Promise<void> {
   const recent = readdirSync(MEM).filter((f) => /^today-/.test(f)).sort().reverse()
     .map((f) => readFileSync(join(MEM, f), "utf8").trim());
   writeFileSync(memFile("recent.md"), `# Recent\n\n${recent.join("\n\n")}\n`);
+
+  for (const [week, raw] of weekSections(readMem("archive.md"))) {
+    if (daysBetween(week, today()) < 14 || existsSync(memFile(`week-${week}.md`))) continue;
+    writeFileSync(memFile(`week-${week}.md`), `## week of ${week}\n${await condense(ROLL_INSTR("one week"), raw)}\n`);
+  }
+
+  const weekFiles = readdirSync(MEM).filter((f) => /^week-\d{4}-\d{2}-\d{2}\.md$/.test(f)).sort();
+  for (const month of new Set(weekFiles.map((f) => f.slice(5, 12)))) {
+    if (daysBetween(monthEnd(month), today()) < 14 || existsSync(memFile(`month-${month}.md`))) continue;
+    const raw = weekFiles.filter((f) => f.slice(5, 12) === month).map((f) => readMem(f).trim()).join("\n\n");
+    writeFileSync(memFile(`month-${month}.md`), `## ${month}\n${await condense(ROLL_INSTR("one month"), raw)}\n`);
+  }
 }
+
+const latest = (re: RegExp, n: number) =>
+  readdirSync(MEM).filter((f) => re.test(f)).sort().slice(-n).reverse().map((f) => readMem(f).trim()).join("\n\n");
 
 function memoryBlock(): string {
   const core = readMem("core.md").trim();
@@ -166,6 +193,8 @@ function memoryBlock(): string {
     core && `User preferences and facts. Follow these:\n${core}`,
     now && `Earlier today:\n${now}`,
     recent && `Recent days:\n${recent}`,
+    existsSync(MEM) && latest(/^week-/, 2) && `Earlier weeks:\n${latest(/^week-/, 2)}`,
+    existsSync(MEM) && latest(/^month-/, 2) && `Earlier months:\n${latest(/^month-/, 2)}`,
   ].filter(Boolean).join("\n\n");
   if (!parts) return "";
   const body = parts.length > INJECT_MAX_CHARS ? `${parts.slice(0, INJECT_MAX_CHARS)}\n[...]` : parts;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chunks, cleanPath, daysBetween, estTokens, matchName, fit, grounded, locate, parseAnswer, parseEntries, stripLeadIn, weekOf } from "../src/lib.ts";
+import { chunks, cleanPath, daysBetween, estTokens, matchName, fit, grounded, locate, monthEnd, newFacts, parseAnswer, parseEntries, stripLeadIn, weekOf, weekSections } from "../src/lib.ts";
 
 test("estTokens counts digits and symbols as whole tokens", () => {
   assert.equal(estTokens("1234"), 4);
@@ -50,7 +50,22 @@ test("parseEntries splits dated sections", () => {
   assert.deepEqual(es.map((e) => [e.date, e.body]), [["2026-10-04", "note one"], ["2026-10-05", "note two"]]);
 });
 
+test("newFacts keeps grounded, unseen facts only", () => {
+  const asked = "i want terse answers\nim taking AP Physics C this semester";
+  const out = "- wants terse answers\n- taking AP Physics C\n- loves basketball\n- wants terse answers\nNONE";
+  assert.deepEqual(newFacts(out, asked, ""), ["wants terse answers", "taking AP Physics C"]);
+  assert.deepEqual(newFacts(out, asked, "- wants terse answers\n"), ["taking AP Physics C"]);
+});
+
+test("weekSections merges per-day blocks by week", () => {
+  const w = weekSections("### week of 2026-10-05\n## 2026-10-05\na\n\n### week of 2026-10-05\n## 2026-10-06\nb\n\n### week of 2026-10-12\n## 2026-10-12\nc\n");
+  assert.deepEqual([...w.keys()], ["2026-10-05", "2026-10-12"]);
+  assert.match(w.get("2026-10-05")!, /a[\s\S]*b/);
+});
+
 test("date helpers", () => {
+  assert.equal(monthEnd("2026-02"), "2026-02-28");
+  assert.equal(monthEnd("2026-10"), "2026-10-31");
   assert.equal(weekOf("2026-10-08"), "2026-10-05");
   assert.equal(daysBetween("2026-09-28", "2026-10-05"), 7);
 });

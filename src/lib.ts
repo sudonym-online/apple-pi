@@ -131,3 +131,32 @@ export function weekOf(date: string): string {
 export function daysBetween(a: string, b: string): number {
   return Math.round((Date.parse(`${b}T12:00:00`) - Date.parse(`${a}T12:00:00`)) / 86_400_000);
 }
+
+export function newFacts(out: string, source: string, known: string): string[] {
+  const src = source.toLowerCase();
+  const seen = new Set(known.toLowerCase().split("\n").map((l) => l.replace(/^- /, "").trim()));
+  return out.split("\n")
+    .map((l) => l.replace(/^\s*[-*•]\s*/, "").trim())
+    .filter((f) => {
+      const words = f.toLowerCase().match(/[a-z0-9']{3,}/g) ?? [];
+      const hits = words.filter((w) => src.includes(w)).length;
+      if (!words.length || hits * 2 < words.length || seen.has(f.toLowerCase())) return false;
+      seen.add(f.toLowerCase());
+      return true;
+    });
+}
+
+export function weekSections(archive: string): Map<string, string> {
+  const weeks = new Map<string, string>();
+  for (const block of archive.split(/^### week of /m).slice(1)) {
+    const week = block.slice(0, 10);
+    weeks.set(week, `${weeks.get(week) ?? ""}${block.slice(10).trim()}\n`);
+  }
+  return weeks;
+}
+
+export function monthEnd(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+}
+
